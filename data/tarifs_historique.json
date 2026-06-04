@@ -1,0 +1,63 @@
+{
+  "edf_hphc": [
+    {
+      "date_debut": "2025-02-01",
+      "label": "EDF Tarif Bleu HP/HC 12kVA — fév. 2025",
+      "abo_mensuel": 23.32,
+      "hp_cts": 20.65,
+      "hc_cts": 15.79,
+      "ratio_hp": 0.54,
+      "ratio_hc": 0.46
+    },
+    {
+      "date_debut": "2025-08-01",
+      "label": "EDF Tarif Bleu HP/HC 12kVA — août 2025",
+      "abo_mensuel": 26.84,
+      "hp_cts": 20.8,
+      "hc_cts": 16.34,
+      "ratio_hp": 0.54,
+      "ratio_hc": 0.46
+    },
+    {
+      "date_debut": "2026-02-01",
+      "label": "EDF Tarif Bleu HP/HC 12kVA — fév. 2026",
+      "abo_mensuel": 23.32,
+      "hp_cts": 20.65,
+      "hc_cts": 15.79,
+      "ratio_hp": 0.54,
+      "ratio_hc": 0.46
+    }
+  ],
+  "urban_solar": [
+    {
+      "date_debut": "2026-01-20",
+      "label": "Urban Solar HP/HC 12kVA — jan. 2026 (tarif août 2025)",
+      "abo_reseau": 34.69,
+      "abo_stockage": 14.4,
+      "abo_mensuel": 49.09,
+      "hp_cts": 20.8,
+      "hc_cts": 16.34,
+      "acheminement_hp_cts": 9.63,
+      "acheminement_hc_cts": 7.9,
+      "ratio_hp": 0.54,
+      "ratio_hc": 0.46,
+      "frais_ouverture": 249.0,
+      "note_ratios": "Calculé depuis courbe de charge Enedis: Jan 44/56, Fév 51/49, Mar 61/39, Avr 61/39, Mai 57/43"
+    },
+    {
+      "date_debut": "2026-02-01",
+      "label": "Urban Solar HP/HC 12kVA — fév. 2026",
+      "abo_reseau": 25.38,
+      "abo_stockage": 14.4,
+      "abo_mensuel": 39.78,
+      "hp_cts": 20.65,
+      "hc_cts": 15.79,
+      "acheminement_hp_cts": 9.63,
+      "acheminement_hc_cts": 7.9,
+      "ratio_hp": 0.54,
+      "ratio_hc": 0.46,
+      "frais_ouverture": 0.0,
+      "note_ratios": "Calculé depuis courbe de charge Enedis: Jan 44/56, Fév 51/49, Mar 61/39, Avr 61/39, Mai 57/43"
+    }
+  ]
+}
