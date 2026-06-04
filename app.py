@@ -480,29 +480,105 @@ with tab_gains:
                 mois_a_charger = [m for m in range(1,13)
                                   if f"{year}-{m:02d}" <= f"{year}-{date.today().month:02d}"]
 
+                # ---- Cache SQLite des données journalières ----
+                # Mois passés (terminés depuis > 2 jours) → cache, pas d'appel API
+                # Mois en cours et mois précédent récent → appel API
+
+                import sqlite3 as _sqlite3
+                CACHE_DB = Path("data/cache_daily.sqlite")
+                CACHE_DB.parent.mkdir(parents=True, exist_ok=True)
+
+                def cache_init():
+                    con = _sqlite3.connect(CACHE_DB)
+                    con.execute("""
+                        CREATE TABLE IF NOT EXISTS daily_cache (
+                            ym TEXT NOT NULL,
+                            date TEXT NOT NULL,
+                            mois INTEGER,
+                            produit_kwh REAL,
+                            consomme_kwh REAL,
+                            importe_kwh REAL,
+                            exporte_kwh REAL,
+                            PRIMARY KEY (ym, date)
+                        )
+                    """)
+                    con.commit()
+                    return con
+
+                def cache_has_month(con, ym):
+                    r = con.execute("SELECT COUNT(*) FROM daily_cache WHERE ym=?", (ym,)).fetchone()
+                    return r[0] > 0
+
+                def cache_read_month(con, ym):
+                    rows = con.execute(
+                        "SELECT date, mois, produit_kwh, consomme_kwh, importe_kwh, exporte_kwh "
+                        "FROM daily_cache WHERE ym=? ORDER BY date", (ym,)
+                    ).fetchall()
+                    return [{"date": r[0], "mois": r[1], "produit_kwh": r[2],
+                             "consomme_kwh": r[3], "importe_kwh": r[4], "exporte_kwh": r[5]}
+                            for r in rows]
+
+                def cache_write_month(con, ym, rows):
+                    con.executemany(
+                        "INSERT OR REPLACE INTO daily_cache "
+                        "(ym, date, mois, produit_kwh, consomme_kwh, importe_kwh, exporte_kwh) "
+                        "VALUES (?,?,?,?,?,?,?)",
+                        [(ym, r["date"], r["mois"], r["produit_kwh"],
+                          r["consomme_kwh"], r["importe_kwh"], r["exporte_kwh"]) for r in rows]
+                    )
+                    con.commit()
+
+                def is_month_final(year, m):
+                    """Mois terminé depuis plus de 2 jours → on peut cacher définitivement."""
+                    today = date.today()
+                    last_day = date(year, m, calendar.monthrange(year, m)[1])
+                    return (today - last_day).days > 2
+
+                con_cache = cache_init()
                 rows_daily = []
-                with st.spinner(f"Chargement journalier — {len(mois_a_charger)} appels API…"):
+                appels_api = 0
+                appels_cache = 0
+
+                with st.spinner("Chargement des données…"):
                     for m in mois_a_charger:
                         ym = f"{year}-{m:02d}"
-                        try:
-                            p = client.get_meter_period(
-                                sid=sid_input, eid=meter_input,
-                                energy_level="daily", date_range=ym,
-                            )
-                            save_snapshot("meter_daily", p, level="daily", date_range=ym)
-                            dd = p.get("data", {})
-                            times = dd.get("time", [])
-                            for i,t in enumerate(times):
-                                rows_daily.append({
-                                    "date":         f"{year}-{m:02d}-{int(t):02d}",
-                                    "mois":         m,
-                                    "produit_kwh":  as_float(dd.get("produced",  [0]*99)[i] if i < len(dd.get("produced",[])) else 0),
-                                    "consomme_kwh": as_float(dd.get("consumed",  [0]*99)[i] if i < len(dd.get("consumed",[])) else 0),
-                                    "importe_kwh":  as_float(dd.get("imported",  [0]*99)[i] if i < len(dd.get("imported",[])) else 0),
-                                    "exporte_kwh":  as_float(dd.get("exported",  [0]*99)[i] if i < len(dd.get("exported",[])) else 0),
-                                })
-                        except Exception as em:
-                            st.warning(f"Mois {ym} : {em}")
+                        # Utiliser le cache si mois final et données présentes
+                        if is_month_final(year, m) and cache_has_month(con_cache, ym):
+                            rows_daily.extend(cache_read_month(con_cache, ym))
+                            appels_cache += 1
+                        else:
+                            try:
+                                p = client.get_meter_period(
+                                    sid=sid_input, eid=meter_input,
+                                    energy_level="daily", date_range=ym,
+                                )
+                                save_snapshot("meter_daily", p, level="daily", date_range=ym)
+                                dd = p.get("data", {})
+                                times = dd.get("time", [])
+                                month_rows = []
+                                for i, t in enumerate(times):
+                                    month_rows.append({
+                                        "date":         f"{year}-{m:02d}-{int(t):02d}",
+                                        "mois":         m,
+                                        "produit_kwh":  as_float(dd.get("produced",  [])[i] if i < len(dd.get("produced",[])) else 0),
+                                        "consomme_kwh": as_float(dd.get("consumed",  [])[i] if i < len(dd.get("consumed",[])) else 0),
+                                        "importe_kwh":  as_float(dd.get("imported",  [])[i] if i < len(dd.get("imported",[])) else 0),
+                                        "exporte_kwh":  as_float(dd.get("exported",  [])[i] if i < len(dd.get("exported",[])) else 0),
+                                    })
+                                # Cacher si mois final
+                                if is_month_final(year, m) and month_rows:
+                                    cache_write_month(con_cache, ym, month_rows)
+                                rows_daily.extend(month_rows)
+                                appels_api += 1
+                            except Exception as em:
+                                st.warning(f"Mois {ym} : {em}")
+
+                con_cache.close()
+                if appels_cache > 0 or appels_api > 0:
+                    st.info(
+                        f"📦 {appels_cache} mois depuis le cache · "
+                        f"🌐 {appels_api} appels API"
+                    )
 
                 if not rows_daily:
                     st.warning("Aucune donnée journalière.")
