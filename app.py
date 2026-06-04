@@ -768,33 +768,52 @@ with tab_gains:
                 st.markdown("<div class='section-title'>Évolution du stock virtuel</div>",
                             unsafe_allow_html=True)
                 fig2 = go.Figure()
+                # Courbe stock — sans texte sur chaque point
                 fig2.add_trace(go.Scatter(
                     name="Stock fin de mois (kWh)",
                     x=df_sim["Mois"], y=df_sim["Stock virtuel fin kWh"],
-                    mode="lines+markers+text",
-                    text=df_sim["Stock virtuel fin kWh"].astype(str),
-                    textposition="top center",
-                    textfont=dict(size=16, color="#0891b2"),
+                    mode="lines+markers",
                     line=dict(color="#0891b2", width=3),
-                    marker=dict(size=11),
-                    fill="tozeroy", fillcolor="rgba(8,145,178,0.10)"
+                    marker=dict(size=10),
+                    fill="tozeroy", fillcolor="rgba(8,145,178,0.10)",
+                    hovertemplate="%{x} : <b>%{y} kWh</b><extra></extra>"
                 ))
-                # Ligne de référence Urban Solar au 22/05
-                fig2.add_hline(y=US_REF_STOCK, line_dash="dash", line_color="#b45309",
-                               annotation_text=f"Urban Solar 22/05 : {US_REF_STOCK} kWh",
-                               annotation_font_size=15)
-                # Point au 22/05 sur la courbe
+                # Ligne de référence Urban Solar
+                fig2.add_hline(
+                    y=US_REF_STOCK, line_dash="dash", line_color="#b45309",
+                    annotation_text=f"Urban Solar 22/05 : {US_REF_STOCK} kWh",
+                    annotation_font_size=14,
+                    annotation_position="bottom right"
+                )
+                # Point au 22/05 — juste le marqueur avec hover
                 if stock_au_22mai is not None:
                     fig2.add_trace(go.Scatter(
-                        name="Mon calcul au 22/05",
+                        name=f"Mon calcul au 22/05 : {round(stock_au_22mai,0)} kWh",
                         x=["Mai"], y=[round(stock_au_22mai,0)],
-                        mode="markers+text",
-                        text=[f"{round(stock_au_22mai,0)} kWh"],
-                        textposition="bottom center",
-                        textfont=dict(size=16, color="#0891b2"),
-                        marker=dict(size=16, color="#0891b2", symbol="diamond"),
+                        mode="markers",
+                        marker=dict(size=18, color="#b45309", symbol="diamond"),
+                        hovertemplate=f"22/05 : <b>{round(stock_au_22mai,0)} kWh</b><extra></extra>"
                     ))
-                fig2.update_layout(**PLOTLY_LAYOUT, height=360, yaxis_title="kWh")
+                # Annoter seulement la dernière valeur
+                dernier_mois = df_sim["Mois"].iloc[-1]
+                dernier_stock = df_sim["Stock virtuel fin kWh"].iloc[-1]
+                fig2.add_annotation(
+                    x=dernier_mois, y=dernier_stock,
+                    text=f"<b>{dernier_stock} kWh</b>",
+                    showarrow=True, arrowhead=2,
+                    font=dict(size=15, color="#0891b2"),
+                    bgcolor="rgba(255,255,255,0.8)",
+                    bordercolor="#0891b2", borderwidth=1,
+                    ay=-40
+                )
+                layout_fig2 = {k: v for k, v in PLOTLY_LAYOUT.items() if k not in ("xaxis","yaxis","legend")}
+                fig2.update_layout(
+                    **layout_fig2,
+                    xaxis=dict(gridcolor="rgba(100,160,220,0.2)", tickfont=dict(size=15)),
+                    yaxis=dict(gridcolor="rgba(100,160,220,0.2)", title="kWh", tickfont=dict(size=15)),
+                    legend=dict(bgcolor="rgba(255,255,255,0.8)", font=dict(size=14)),
+                    height=380
+                )
                 st.plotly_chart(fig2, use_container_width=True)
 
                 # ---- Tableau ----
