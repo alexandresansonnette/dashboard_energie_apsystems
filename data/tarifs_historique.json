@@ -59,5 +59,6 @@
       "frais_ouverture": 0.0,
       "note_ratios": "Calculé depuis courbe de charge Enedis: Jan 44/56, Fév 51/49, Mar 61/39, Avr 61/39, Mai 57/43"
     }
-  ]
+  ],
+  "pertes_cable_pct": 3.2
 }

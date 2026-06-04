@@ -66,6 +66,10 @@ def save_tarifs(t):
     TARIFS_FILE.parent.mkdir(parents=True, exist_ok=True)
     TARIFS_FILE.write_text(json.dumps(t, ensure_ascii=False, indent=2), "utf-8")
 
+def get_pertes(tarifs):
+    """Lit le coefficient de pertes câblage depuis le JSON."""
+    return tarifs.get("pertes_cable_pct", 3.2)
+
 def get_tarif_for_month(tarifs_list, ym):
     applicable = None
     for t in sorted(tarifs_list, key=lambda x: x["date_debut"]):
@@ -469,6 +473,7 @@ with tab_gains:
         if st.button("🔄 Calculer les gains"):
             try:
                 tarifs_r  = load_tarifs()
+                PERTES_CABLE = get_pertes(tarifs_r)
                 us_debut  = tarifs_r["urban_solar"][0]["date_debut"]  # "2026-01-20"
 
                 # Mois à charger jusqu'au mois courant
@@ -514,7 +519,10 @@ with tab_gains:
                 df_us = df_daily[df_daily["date"] >= us_debut].copy()
                 stock = 0.0
                 for idx, row in df_us.iterrows():
-                    stock += row["exporte_kwh"]
+                    # Appliquer le coefficient de pertes câblage (onduleur → compteur Enedis)
+                    coeff_pertes = 1 - (PERTES_CABLE / 100)
+                    export_net = row["exporte_kwh"] * coeff_pertes
+                    stock += export_net
                     rep    = min(stock, row["importe_kwh"])
                     stock -= rep
                     df_us.at[idx, "reprise_kwh"]    = rep
@@ -610,6 +618,65 @@ with tab_gains:
                     </div>
                 </div>
                 """, unsafe_allow_html=True)
+
+                # ---- Vérification coefficient pertes ----
+                with st.expander("🔧 Vérifier et ajuster le coefficient de pertes câblage"):
+                    st.markdown(
+                        "<p style='color:#4a7a9b;font-size:1rem;'>"
+                        "Compare ton stock calculé avec la valeur affichée dans l'app Urban Solar "
+                        "pour ajuster le coefficient de pertes (onduleur → compteur Enedis).</p>",
+                        unsafe_allow_html=True
+                    )
+                    col_v1, col_v2, col_v3 = st.columns(3)
+                    with col_v1:
+                        us_stock_reel = st.number_input(
+                            "Stock Urban Solar app (kWh)",
+                            value=927.0, step=1.0,
+                            help="Valeur affichée dans l'app Urban Solar à une date donnée"
+                        )
+                        us_stock_date = st.text_input(
+                            "Date de référence (YYYY-MM-DD)",
+                            value="2026-05-22"
+                        )
+                    with col_v2:
+                        # Stock calculé à cette date
+                        try:
+                            stock_ref = df_us[df_us["date"] <= us_stock_date]["stock_fin_kwh"].iloc[-1]
+                        except:
+                            stock_ref = stk_actuel
+                        st.markdown(
+                            f"<div class='metric-card accent-cyan'>"
+                            f"<div class='label'>Mon calcul à cette date</div>"
+                            f"<div class='value'>{fmt(stock_ref,0)}<span class='unit'> kWh</span></div>"
+                            f"</div>",
+                            unsafe_allow_html=True
+                        )
+                    with col_v3:
+                        ecart_v = stock_ref - us_stock_reel
+                        # Recalcul du vrai coefficient
+                        # stock_ref = export_total * (1 - pertes) - reprises
+                        # On approxime : pertes_réelles = ecart / export_total
+                        export_total = df_us["exporte_kwh"].sum()
+                        if export_total > 0 and ecart_v > 0:
+                            pertes_reelles = (ecart_v / (export_total * (1 - PERTES_CABLE/100))) * 100 + PERTES_CABLE
+                            pertes_reelles = round(pertes_reelles, 1)
+                        else:
+                            pertes_reelles = PERTES_CABLE
+                        couleur = "#059669" if abs(ecart_v) < 30 else "#d97706" if abs(ecart_v) < 100 else "#dc2626"
+                        st.markdown(
+                            f"<div class='metric-card accent-orange'>"
+                            f"<div class='label'>Écart</div>"
+                            f"<div class='value' style='color:{couleur};'>{fmt(ecart_v,0)}<span class='unit'> kWh</span></div>"
+                            "<div class='sub'>Pertes réelles estimées : " + str(pertes_reelles) + "%<br>"
+                            "Coefficient actuel : " + str(PERTES_CABLE) + "%</div>"
+                            f"</div>",
+                            unsafe_allow_html=True
+                        )
+                    if st.button("✅ Appliquer ce nouveau coefficient de pertes"):
+                        t_save = load_tarifs()
+                        t_save["pertes_cable_pct"] = pertes_reelles
+                        save_tarifs(t_save)
+                        st.success(f"Coefficient mis à jour à {pertes_reelles}% — relance le calcul.")
 
                 # ---- Stock batterie virtuelle ----
                 ecart_stock = round(stock_au_22mai - US_REF_STOCK, 0) if stock_au_22mai else None
@@ -929,6 +996,37 @@ with tab_tarifs:
 
         except Exception as e:
             st.error(f"API data.gouv.fr indisponible : {e}")
+
+    # ---- Coefficient de pertes ----
+    st.markdown("<div class='section-title'>Coefficient de pertes câblage</div>",
+                unsafe_allow_html=True)
+    st.markdown(
+        "<p style='color:#4a7a9b;font-size:1rem;'>"
+        "Pertes entre l'onduleur APsystems et le compteur Enedis (câblage interne). "
+        "Calculé à 3.2% depuis tes courbes de charge Enedis.</p>",
+        unsafe_allow_html=True
+    )
+    pertes_actuel = tarifs.get("pertes_cable_pct", 3.2)
+    col_p1, col_p2 = st.columns([1, 3])
+    with col_p1:
+        new_pertes = st.number_input(
+            "Coefficient de pertes (%)",
+            value=float(pertes_actuel),
+            min_value=0.0, max_value=10.0, step=0.1,
+            help="3.2% mesuré le 22/05/2026 — à re-vérifier de temps en temps"
+        )
+    with col_p2:
+        st.markdown(
+            f"<p style='color:#4a7a9b;font-size:0.95rem;padding-top:32px;'>"
+            f"Valeur actuelle : <strong>{pertes_actuel}%</strong> — "
+            f"impact sur le stock : environ {round(pertes_actuel * 26, 0):.0f} kWh/an "
+            f"(basé sur ~2 600 kWh injectés/an)</p>",
+            unsafe_allow_html=True
+        )
+    if st.button("💾 Enregistrer le coefficient de pertes"):
+        tarifs["pertes_cable_pct"] = new_pertes
+        save_tarifs(tarifs)
+        st.success(f"Coefficient mis à jour à {new_pertes}%.")
 
     # ---- Nouveau tarif Urban Solar ----
     st.markdown("<div class='section-title'>Nouveau tarif Urban Solar</div>",
